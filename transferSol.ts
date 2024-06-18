@@ -5,31 +5,62 @@ import {
   clusterApiUrl,
   Transaction,
   SystemProgram,
-  sendAndConfirmTransaction
+  sendAndConfirmTransaction,
 } from '@solana/web3.js';
 import 'dotenv/config';
 import { getKeypairFromEnvironment } from '@solana-developers/helpers';
 
-(async () => {
-    const keypair = getKeypairFromEnvironment('SECRET_KEY');
-    const connection = new Connection(clusterApiUrl('devnet'));
+const transferSol = async () => {
+  const suppliedToPubkey = process.argv[2] || null;
+  const solToSend = Number(process.argv[3]) || null;
 
-    const transferSol = async (targetAddress: string, amount: number) => {
-        const transaction = new Transaction();
+  if (!suppliedToPubkey) {
+    console.log(`Please provide a public key to send to`);
+    process.exit(1);
+  }
 
-        const sendSolInstruction = SystemProgram.transfer({
-            fromPubkey: keypair.publicKey,
-            toPubkey: new PublicKey(targetAddress),
-            lamports: amount * LAMPORTS_PER_SOL
-        });
+  if (!solToSend) {
+    console.log(`Please enter a valid amount of SOL to send`);
+    process.exit(1);
+  }
 
-        transaction.add(sendSolInstruction);
+  const toPubkey = new PublicKey(suppliedToPubkey);
+  const senderKeypair = getKeypairFromEnvironment('SECRET_KEY');
+  const connection = new Connection(clusterApiUrl('devnet'));
 
-        const res = await sendAndConfirmTransaction(connection, transaction, [keypair]);
+  const transaction = new Transaction();
+
+  const sendSolInstruction = SystemProgram.transfer({
+    fromPubkey: senderKeypair.publicKey,
+    toPubkey: toPubkey,
+    lamports: solToSend * LAMPORTS_PER_SOL,
+  });
+
+  transaction.add(sendSolInstruction);
+
+  try {
+    const startTime = Date.now();
+    const txid = await sendAndConfirmTransaction(connection, transaction, [
+      senderKeypair,
+    ]);
+
+    const endTime = Date.now();
+
+    const durationInSeconds = (endTime - startTime) / 1000;
+
+    console.log('Transaction ID:', txid);
+    console.log(`Transaction took ${durationInSeconds} seconds to complete.`);
+
+    const transactionInfo = await connection.getParsedTransaction(txid)
+
+    if (transactionInfo && transactionInfo.meta && transactionInfo.meta.fee) {
+        const feeInSol = transactionInfo.meta.fee / LAMPORTS_PER_SOL
         
-        return res;
+        console.log('Transaction fee in SOL:', feeInSol)
     }
+  } catch (error) {
+    console.error('Transaction failed:', error);
+  }
+};
 
-    const transactionId = await transferSol('9ww9QzjqC8FN6dqsk5JH6jMc3QMXYiL7utUEn6Skuhbz', 0.1);
-    console.log(transactionId);
-})();
+transferSol();
